@@ -40,7 +40,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
-#include <sys/time.h>
 #include <getopt.h>
 #include <string.h>
 #include <limits.h>
@@ -138,7 +137,7 @@ typedef struct
 ** Prototypes for this module
 */
 void CFE_PSP_SigintHandler (int signal);
-void CFE_PSP_TimerHandler (int signum);
+void CFE_PSP_TimerHandler(uint32 timer_id);
 void CFE_PSP_DisplayUsage(char *Name );
 void CFE_PSP_ProcessArgumentDefaults(CFE_PSP_CommandData_t *CommandData);
 
@@ -189,10 +188,10 @@ static const struct option longOpts[] = {
 */
 int main(int argc, char *argv[])
 {
+   uint32             timer_id, timer_accuracy;
+   OS_timer_prop_t    timer_prop;
    uint32             reset_type;
    uint32             reset_subtype;
-   struct             sigaction sa;
-   struct             itimerval timer;
    int                opt = 0;
    int                longIndex = 0;
 
@@ -200,6 +199,11 @@ int main(int argc, char *argv[])
    ** Initialize the CommandData struct 
    */
    memset(&(CommandData), 0, sizeof(CFE_PSP_CommandData_t));
+      
+   /*
+   ** Initialize the Timer Property struct 
+   */
+   memset(&(timer_prop), 0, sizeof(timer_prop));
       
    /* 
    ** Process the arguments with getopt_long(), then 
@@ -311,25 +315,6 @@ int main(int argc, char *argv[])
    TimerCounter = 0;
 
    /*
-   ** Install timer_handler as the signal handler for SIGVTALRM.
-   */
-   memset (&sa, 0, sizeof (sa));
-   sa.sa_handler = &CFE_PSP_TimerHandler;
-   sigaction (SIGALRM, &sa, NULL);
-
-   /*
-   ** Configure the timer to expire after 250ms
-   */
-   timer.it_value.tv_sec  = 0;
-   timer.it_value.tv_usec = 250000;
-
-   /*
-   **  and every 500ms after that.
-   */
-   timer.it_interval.tv_sec  = 0;
-   timer.it_interval.tv_usec = 250000;
-
-   /*
    ** Initialize the OS API data structures
    */
    OS_API_Init();
@@ -349,11 +334,8 @@ int main(int argc, char *argv[])
    CFE_PSP_InitProcessorReservedMemory(reset_type);
 
 
-   /*
-   ** Start the timer
-   */
-   setitimer (ITIMER_REAL, &timer, NULL);
-
+   OS_TimerCreate(&timer_id, "PSPMain", &timer_accuracy, CFE_PSP_TimerHandler);
+   OS_TimerSet(timer_id, 250000, 250000);
 
    /*
    ** Call cFE entry point.
@@ -417,7 +399,7 @@ void CFE_PSP_SigintHandler (int signal)
 **  Return:
 **    (none)
 */
-void CFE_PSP_TimerHandler (int signum)
+void CFE_PSP_TimerHandler (uint32 timer_id)
 {
       /*
       ** call the CFE_TIME 1hz ISR
